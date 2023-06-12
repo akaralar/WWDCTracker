@@ -39,7 +39,7 @@ printFormatter.dateFormat = "dd/MM E" // We set a custom format to make sorting 
 let secondsFormatter = NumberFormatter()
 secondsFormatter.minimumIntegerDigits = 2
 
-func dateToDay(for date: Date) -> String {
+func day(from date: Date) -> String {
   printFormatter.string(from: date)
 }
 
@@ -62,15 +62,16 @@ func fixedPlatforms(title: String, topics: String, platforms: [String]) -> Strin
   return "\(platforms.joined(separator: ", ")); "
 }
 
-var header = "Session #; Title; Topics; Platforms; Date; Length; Link; Favourite; Watched; Uninterested;\n"
+// The events we want to create csv files for
 let eventIDs = ["wwdc2020", "wwdc2021", "wwdc2022", "wwdc2023"]
 
 // Some events like recap events etc include the following in their names, we will ignore them
 let filterWords = ["@WWDC21", "WWDC22", "WWDC23"]
+
+let header = "Session #; Title; Topics; Platforms; Date; Length; Link; Favourite; Watched; Uninterested;\n"
 var output = eventIDs.reduce(into: [:], { result, next in result[next] = header })
 
 for item in contents where output[item.eventId] != nil && item.type == "Video" {
-
   // If an item doesn't have a platform assigned and includes one of the filter words in title,
   // we ignore and print to the console
   if item.platforms == nil && !filterWords.allSatisfy({ !item.title.contains($0) }) {
@@ -90,7 +91,7 @@ for item in contents where output[item.eventId] != nil && item.type == "Video" {
   outputString += fixedPlatforms(title: item.title, topics: topics, platforms: item.platforms ?? [])
 
   if let publishDate = item.originalPublishingDate {
-    let day = dateToDay(for: publishDate)
+    let day = day(from: publishDate)
     outputString += "\(day); "
   } else {
     outputString += "; "
