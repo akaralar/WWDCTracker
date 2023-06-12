@@ -36,19 +36,19 @@ topicsById = jsonData.topics.reduce(into: [:], { result, next in
 let printFormatter = DateFormatter()
 printFormatter.dateFormat = "dd/MM E" // We set a custom format to make sorting easier
 
+let durationFormatter = DateComponentsFormatter()
+durationFormatter.zeroFormattingBehavior = .pad
+durationFormatter.allowedUnits = [.hour, .minute, .second]
+
 let secondsFormatter = NumberFormatter()
 secondsFormatter.minimumIntegerDigits = 2
 
-func day(from date: Date) -> String {
-  printFormatter.string(from: date)
+func formattedDay(from date: Date?) -> String {
+  date.flatMap { printFormatter.string(from: $0) } ?? ""
 }
 
-func formattedDuration(for durationInSeconds: Int) -> String {
-  if let seconds = secondsFormatter.string(from: (durationInSeconds % 60) as NSNumber) {
-    return "\(durationInSeconds / 60):\(seconds);"
-  } else {
-    return ""
-  }
+func formattedDuration(for durationInSeconds: Int?) -> String {
+  durationInSeconds.flatMap { durationFormatter.string(from: Double($0)) } ?? ""
 }
 
 // The JSON doesn't include visionOS yet, so we add it manually if 'spatial' is mentioned
@@ -59,7 +59,7 @@ func fixedPlatforms(title: String, topics: String, platforms: [String]) -> Strin
     platforms.append("visionOS")
   }
 
-  return "\(platforms.joined(separator: ", ")); "
+  return platforms.joined(separator: ", ")
 }
 
 // The events we want to create csv files for
@@ -83,28 +83,12 @@ for item in contents where output[item.eventId] != nil && item.type == "Video" {
 
   outputString += "\(item.id); "
   outputString += "\(item.title); "
-
   let topics = item.topicIds.compactMap { topicsById[$0] }.joined(separator: ", ")
-  outputString += topics
-  outputString += "; "
-
-  outputString += fixedPlatforms(title: item.title, topics: topics, platforms: item.platforms ?? [])
-
-  if let publishDate = item.originalPublishingDate {
-    let day = day(from: publishDate)
-    outputString += "\(day); "
-  } else {
-    outputString += "; "
-  }
-
-  if let media = item.media {
-    outputString += formattedDuration(for: media.duration)
-  } else {
-    outputString += "; "
-  }
-
+  outputString += "\(topics); "
+  outputString += "\(fixedPlatforms(title: item.title, topics: topics, platforms: item.platforms ?? [])); "
+  outputString += "\(formattedDay(from: item.originalPublishingDate)); "
+  outputString += "\(formattedDuration(for: item.media?.duration)); "
   outputString += "\(item.webPermalink); "
-
   outputString += " ; ; ;\n"
 
   output[item.eventId] = outputString
