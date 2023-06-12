@@ -3,8 +3,6 @@ import UIKit
 
 let file = "contents.json"
 let url = URL(string: "https://api2021.wwdc.io/contents.json")!
-let eventID = "wwdc2023"
-let outputFile = "WWDC23"
 
 print("Hello")
 
@@ -12,6 +10,7 @@ var useWeb = true
 
 var jsonData: JSONData!
 var contents: [Video]
+var topicsById: [Int: String]
 
 let semaphore = DispatchSemaphore(value: 0)
 
@@ -19,8 +18,7 @@ if useWeb {
   let session = URLSession(configuration: .default)
   let task = session.dataTask(with: URLRequest(url: url)) { data, _, _ in
     guard let data = data else { return }
-    jsonData = data.decode(JSONData.self)
-//    print(jsonData!)
+    jsonData = data.decode(JSONData.self, dateDecodingStrategy: .iso8601)
     semaphore.signal()
   }
   task.resume()
@@ -31,76 +29,97 @@ if useWeb {
 
 semaphore.wait()
 contents = jsonData.contents
-
-var outputString = "Session #; Title; Date; Day; Length; Link; Favourite; Watched; Uninterested;\n"
-
-let dateFormatter = DateFormatter()
-dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZZZZZ"
+topicsById = jsonData.topics.reduce(into: [:], { result, next in
+  result[next.id] = next.name
+})
 
 let printFormatter = DateFormatter()
-printFormatter.dateFormat = "dd"
+printFormatter.dateFormat = "dd/MM E" // We set a custom format to make sorting easier
 
-let dayOfWeekFormatter = DateFormatter()
-dayOfWeekFormatter.dateFormat = "E"
+let secondsFormatter = NumberFormatter()
+secondsFormatter.minimumIntegerDigits = 2
 
-func dateToDayOfTheWeek(for date: String) -> String {
-  if let start = dateFormatter.date(from: date) {
-    return dayOfWeekFormatter.string(from: start)
+func dateToDay(for date: Date) -> String {
+  printFormatter.string(from: date)
+}
+
+func formattedDuration(for durationInSeconds: Int) -> String {
+  if let seconds = secondsFormatter.string(from: (durationInSeconds % 60) as NSNumber) {
+    return "\(durationInSeconds / 60):\(seconds);"
   } else {
     return ""
   }
 }
 
-func dateToDay(for date: String) -> String {
-  if let start = dateFormatter.date(from: date) {
-    return printFormatter.string(from: start)
-  } else {
-    return ""
+// The JSON doesn't include visionOS yet, so we add it manually if 'spatial' is mentioned
+func fixedPlatforms(title: String, topics: String, platforms: [String]) -> String {
+  var platforms = platforms
+
+  if topics.lowercased().contains("spatial") || title.lowercased().contains("spatial") {
+    platforms.append("visionOS")
   }
+
+  return "\(platforms.joined(separator: ", ")); "
 }
 
-for item in contents {
-  if item.eventId == eventID,
-     item.type == "Video"
-//     !item.title.contains("Q&A:")
-  {
-    outputString += "\(item.id); "
-    outputString += "\(item.title); "
+var header = "Session #; Title; Topics; Platforms; Date; Length; Link; Favourite; Watched; Uninterested;\n"
+let eventIDs = ["wwdc2020", "wwdc2021", "wwdc2022", "wwdc2023"]
 
-    if let startTime = item.originalPublishingDate {
-      print(startTime)
-      let day = dateToDay(for: startTime)
-      let dayOfTheWeek = dateToDayOfTheWeek(for: startTime)
-      outputString += "\(day); \(dayOfTheWeek); "
-    } else {
-      outputString += "; ; "
-    }
+// Some events like recap events etc include the following in their names, we will ignore them
+let filterWords = ["@WWDC21", "WWDC22", "WWDC23"]
+var output = eventIDs.reduce(into: [:], { result, next in result[next] = header })
 
-//    if let startTime = item.startTime {
-//      outputString += "\(startTime); "
-//    }
+for item in contents where output[item.eventId] != nil && item.type == "Video" {
 
-    if let media = item.media {
-      outputString += "\(media.duration / 60); "
-    } else {
-      outputString += "; "
-    }
-
-    outputString += "\(item.webPermalink); "
-
-    outputString += " ; ; ;\n"
+  // If an item doesn't have a platform assigned and includes one of the filter words in title,
+  // we ignore and print to the console
+  if item.platforms == nil && !filterWords.allSatisfy({ !item.title.contains($0) }) {
+    print("Item not included: \(item.title) - \(item.webPermalink)")
+    continue
   }
+
+  guard var outputString = output[item.eventId] else { continue }
+
+  outputString += "\(item.id); "
+  outputString += "\(item.title); "
+
+  let topics = item.topicIds.compactMap { topicsById[$0] }.joined(separator: ", ")
+  outputString += topics
+  outputString += "; "
+
+  outputString += fixedPlatforms(title: item.title, topics: topics, platforms: item.platforms ?? [])
+
+  if let publishDate = item.originalPublishingDate {
+    let day = dateToDay(for: publishDate)
+    outputString += "\(day); "
+  } else {
+    outputString += "; "
+  }
+
+  if let media = item.media {
+    outputString += formattedDuration(for: media.duration)
+  } else {
+    outputString += "; "
+  }
+
+  outputString += "\(item.webPermalink); "
+
+  outputString += " ; ; ;\n"
+
+  output[item.eventId] = outputString
 }
 
 let outputFolder = PlaygroundSupport.playgroundSharedDataDirectory
-let outputURL = outputFolder.appendingPathComponent("\(outputFile).csv")
+for (eventID, outputString) in output {
+  let outputURL = outputFolder.appendingPathComponent("\(eventID).csv")
 
-do {
-  try FileManager.default.createDirectory(at: outputFolder, withIntermediateDirectories: true, attributes: nil)
-  try outputString.write(toFile: outputURL.path, atomically: false, encoding: .utf8)
-} catch {
-  print(error.localizedDescription)
+  do {
+    try FileManager.default.createDirectory(at: outputFolder, withIntermediateDirectories: true, attributes: nil)
+    try outputString.write(toFile: outputURL.path, atomically: false, encoding: .utf8)
+  } catch {
+    print(error.localizedDescription)
+  }
+
+  print("Open \(eventID).csv via:")
+  print("open", outputURL.path.replacingOccurrences(of: " ", with: "\\ "))
 }
-
-print("Open \(outputFile).csv via:")
-print("open", outputURL.path.replacingOccurrences(of: " ", with: "\\ "))
