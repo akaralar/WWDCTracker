@@ -63,12 +63,13 @@ func fixedPlatforms(title: String, topics: String, platforms: [String]) -> Strin
 }
 
 // The events we want to create csv files for
-let eventIDs = ["wwdc2019", "wwdc2020", "wwdc2021", "wwdc2022", "wwdc2023", "wwdc2024"]
+let eventIDs = ["wwdc2017"]
+//let eventIDs = ["wwdc2019", "wwdc2020", "wwdc2021", "wwdc2022", "wwdc2023", "wwdc2024"]
 
 // Some events like recap events etc include the following in their names, we will ignore them
 let filterWords = ["@WWDC21", "WWDC22", "WWDC23"]
 
-let header = "Session #;Title;Topics;Platforms;Date;Length;Link;Favourite;Watched;Uninterested;\n"
+let header = "Session #;Title;Favourite;Watched;Interested;Topics;Platforms;Date;Length;Link;\n"
 var output = eventIDs.reduce(into: [:], { result, next in result[next] = header })
 
 for item in contents where output[item.eventId] != nil && (item.type == "Video" || item.type == "Session") {
@@ -83,6 +84,7 @@ for item in contents where output[item.eventId] != nil && (item.type == "Video" 
 
     outputString += "\(item.id.trimmingCharacters(in: .whitespaces));"
     outputString += "\(item.title.trimmingCharacters(in: .whitespaces));"
+    outputString += ";;;"
     let topics = item.topicIds.compactMap { topicsById[$0] }
         .map { $0.trimmingCharacters(in: .whitespaces) }
         .joined(separator: ", ")
@@ -90,8 +92,7 @@ for item in contents where output[item.eventId] != nil && (item.type == "Video" 
     outputString += "\(fixedPlatforms(title: item.title, topics: topics, platforms: item.platforms ?? []));"
     outputString += "\(formattedDay(from: item.originalPublishingDate));"
     outputString += "\(formattedDuration(for: item.media?.duration));"
-    outputString += "\(item.webPermalink);"
-    outputString += ";;;\n"
+    outputString += "\(item.webPermalink);\n"
 
     output[item.eventId] = outputString
 }
